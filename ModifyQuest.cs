@@ -4,10 +4,10 @@ namespace MHFQuestReader
 	public static class ModifyQuest
     {
 
-        public const int cMax_MapID = 0x49;
-        public const int cMax_MonsterID = 0x49;
-        public const int cMax_ItemID = 0x031D;
-        public const int cMax_FishID = 0x0017;
+        //public const int cMax_MapID = 0x49;
+        //public const int cMax_MonsterID = 0x49;
+        //public const int cMax_ItemID = 0x031D;
+        //public const int cMax_FishID = 0x0017;
 
         public const int cMax_GuTi = 0x16;
         public const int cMax_QuestStar = 8;
@@ -89,7 +89,7 @@ namespace MHFQuestReader
         /// <summary>
         /// 任务_类型 偏移
         /// </summary>
-        public const int cQuestInfo_TargetMap_Offset = 32;
+        public const int cQuestInfo_TargetMap_Offset = 32 + 4;//MHF还要+4
 
         /// <summary>
         /// 任务_类型 长度
@@ -113,7 +113,7 @@ namespace MHFQuestReader
 
 
             //任务信息
-            if (ModifyQuestMap(target, out List<string> out_ModifyQuestMap, out string QuestName, out _QuestID))
+            if (ReadQuestMap(target, out List<string> out_ModifyQuestMap, out string QuestName, out _QuestID))
             {
                 Infos.AddRange(out_ModifyQuestMap);
                 if (QuestName == "\u0011")
@@ -134,6 +134,11 @@ namespace MHFQuestReader
                 }
             }
 
+            //读取BOSS
+            if (ReadQuestBOSS(target, out List<string> out_BOSSItem))
+            {
+                Infos.AddRange(out_BOSSItem);
+            }
             //支援道具
             if (FixSuppliesItem(target, out List<string> out_FixSuppliesItem))
             {
@@ -179,8 +184,7 @@ namespace MHFQuestReader
             return true;
         }
 
-
-        public static bool ModifyQuestMap(byte[] src, out List<string> resultStr,out string QuestName,out uint _QuestID)
+        public static bool ReadQuestMap(byte[] src, out List<string> resultStr,out string QuestName,out uint _QuestID)
         {
             resultStr = new List<string>();
             QuestName = "";
@@ -204,26 +208,14 @@ namespace MHFQuestReader
 
                 //任务星 尝试处理方案
                 int _QuestStart = HexHelper.bytesToInt(target, 1, _QuestInfoPtr + cQuestInfo_Star_Offset);
-                //if (_QuestStart > cMax_QuestStar)
-                //{
-                //    Log.HexWar(_QuestInfoPtr + cQuestInfo_Star_Offset, "任务星级超出限制 ->{0},修正为2Dos星最大值{1}", _QuestStart, cMax_QuestStar);
-                //}
-                //else
                 {
                     Log.HexColor(ConsoleColor.Magenta, _QuestInfoPtr + cQuestInfo_Star_Offset, "任务星级->{0}", _QuestStart);
                 }
-                //Log.HexTips(_QuestInfoPtr + cQuestInfo_Star_Offset, "写入任务星级,MHF为2位,2Dos为1位{0}，覆盖第二位无意义数据", _QuestStart);
-                //HexHelper.ModifyIntHexToBytes(target, cMax_QuestStar, _QuestInfoPtr + cQuestInfo_Star_Offset, cQuestInfo_Star_Lenght);
-
 
                 int _QuestTargetMapID = HexHelper.bytesToInt(target, cQuestInfo_TargetMapID_Lenght, _QuestInfoPtr + cQuestInfo_TargetMap_Offset);
-                //if (_QuestTargetMapID > cMax_MapID)
-                //{
-                //    Log.HexWar(_QuestInfoPtr + cQuestInfo_TargetMap_Offset, "目的地地图,指针->{0} 超过最大 属于MHF地图", _QuestTargetMapID);
-                //}
-                //else
                 {
-                    Log.HexColor(ConsoleColor.Green, _QuestInfoPtr + cQuestInfo_TargetMap_Offset, "目的地地图,指针->{0} 【"+MHHelper.Get2MapName(_QuestTargetMapID)+ "】", _QuestTargetMapID);
+                    MHHelper.Get2MHFMapName(_QuestTargetMapID, out string _mapName);
+                    Log.HexColor(ConsoleColor.Green, _QuestInfoPtr + cQuestInfo_TargetMap_Offset, "目的地地图,指针->{0} 【"+ _mapName + "】", _QuestTargetMapID);
                 }
 
                 int _ModeType = HexHelper.bytesToInt(target, 1, _QuestInfoPtr + 2);
@@ -293,7 +285,8 @@ namespace MHFQuestReader
                 resultStr.Add(_ModeType.ToString());
 
                 resultStr.Add("[任务地图]");
-                resultStr.Add(MHHelper.Get2MapName(_QuestTargetMapID));
+                MHHelper.Get2MHFMapName(_QuestTargetMapID, out string MapName);
+                resultStr.Add(MapName);
 
                 resultStr.Add("[固体值(怪物强度)]");
                 resultStr.Add(_GuTiValue.ToString());
@@ -352,7 +345,7 @@ namespace MHFQuestReader
 
                     if (count > 0)
                     {
-                        resultStr.Add($"{MHHelper.Get2DosItemName(ItemID)}|概率:{Pr}|数量:{count}");
+                        resultStr.Add($"{MHHelper.Get2MHFItemName(ItemID)}|概率:{Pr}|数量:{count}");
                     }
 
                     CurrPtr += 0x06;//前推游标
@@ -361,11 +354,17 @@ namespace MHFQuestReader
             return true;
         }
 
-        public static bool ModifyQuestBOSS(byte[] src, out byte[] target)
+        public static bool ReadQuestBOSS(byte[] src,  out List<string> resultStr)
         {
+
+            resultStr = new List<string>();
+
+            resultStr.Add("");
+            resultStr.Add("【任务基本信息】");
+            resultStr.Add("");
             try
             {
-                target = HexHelper.CopyByteArr(src);//加载数据
+                byte[] target = HexHelper.CopyByteArr(src);//加载数据
                 //BOSS(头部信息指针
                 int _BOOSInFoPtr = HexHelper.bytesToInt(target, 4, 0x18);
 
@@ -399,141 +398,24 @@ namespace MHFQuestReader
                         //报酬组类型
                         int _BOSSID = HexHelper.bytesToInt(target, 0x04, CurrPtr);
 
-                        if (_BOSSID > cMax_MonsterID)
-                        {
-                            Log.HexWar(CurrPtr, "第{0}个BOSS，ID->{1} 大于了 最大ID{2} 属于MHF怪物,该任务无法使用", BOSSIndex, _BOSSID, cMax_MonsterID);
-                        }
-                        else
-                        {
-                            Log.HexColor(ConsoleColor.Green, CurrPtr, "第{0}个BOSS，ID->{1} 【" + MHHelper.Get2BossName(_BOSSID) + "】", BOSSIndex, _BOSSID);
-                        }
+                        Log.HexColor(ConsoleColor.Green, CurrPtr, "第{0}个BOSS，ID->{1} 【" + MHHelper.Get2MHFBossName(_BOSSID) + "】", BOSSIndex, _BOSSID);
+
+
+                        resultStr.Add($"第{BOSSIndex}个BOSS，ID->{_BOSSID} 【" + MHHelper.Get2MHFBossName(_BOSSID) + "】");
 
                         CurrPtr += 0x04;//前推游标
                     }
                 }
+
+                if (BOSSIndex == 0)
+                    resultStr.Add("无BOSS");
+
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex); target = null; return false;
+                Console.WriteLine(ex);  return false;
             }
-        }
-
-        public static bool FixMapAreaData(byte[] src,out byte[] target)
-        {
-            int _QuestTargetMapID;
-            try
-            {
-                target = HexHelper.CopyByteArr(src);//加载数据
-
-                //从前4字节取出指针 定位任务信息位置
-                int _QuestInfoPtr = HexHelper.bytesToInt(target, 4, 0x00);
-                Log.HexTips(0x00, "开始读取任务头部信息,指针->{0}", _QuestInfoPtr);
-
-                //任务目的地MapID
-                _QuestTargetMapID = HexHelper.bytesToInt(target, ModifyQuest.cQuestInfo_TargetMapID_Lenght, _QuestInfoPtr + ModifyQuest.cQuestInfo_TargetMap_Offset);
-                Log.HexColor(ConsoleColor.Green, _QuestInfoPtr + ModifyQuest.cQuestInfo_TargetMap_Offset, "目的地地图,指针->{0} 【" + MHHelper.Get2MapName(_QuestTargetMapID) + "】", _QuestTargetMapID);
-
-
-
-                if (LoadToSaveTemplate.DictMapAreaData.ContainsKey(_QuestTargetMapID))
-                {
-                    //区域数量
-                    int _AreaCount = MHHelper.GetMapAreaCount(_QuestTargetMapID);
-                    Log.Info(MHHelper.Get2MapName(_QuestTargetMapID) + "的地图数量" + _AreaCount);
-
-                    MapAreaData srcData2Dos = LoadToSaveTemplate.DictMapAreaData[_QuestTargetMapID];
-                    #region 换区设置
-
-                    //换区设置指针
-                    int _CAreaSetTopPtr = HexHelper.bytesToInt(target, 4, 0x1C);
-                    Log.HexInfo(0x1C, "换区设置指针->{0}", _CAreaSetTopPtr);
-
-                    //读取换区单个区域游标
-                    int _CAreaSetTop_CurrPtr = _CAreaSetTopPtr;
-
-                    for (int i = 0; i < _AreaCount; i++)
-                    {
-                        int _One_CurrPtr = HexHelper.bytesToInt(target, 4, _CAreaSetTop_CurrPtr);
-
-                        if (_One_CurrPtr == 0x0)
-                        {
-                            Log.HexInfo(_CAreaSetTop_CurrPtr, "区域设置" + i + "指针为0，跳过");
-                            break;
-                        }
-
-                        if (srcData2Dos.targetDatas.Length <= i)
-                        {
-                            Log.HexWar(_One_CurrPtr, "第" + i + "区 区域设置,比2Dos区数超限。");
-                            break;
-                        }
-
-
-                        int Set_TargetIndex = 0;
-                        while (true)
-                        {
-                            if (MHHelper.CheckEnd(target, _One_CurrPtr)
-                            ||
-                            HexHelper.bytesToInt(target, 1, _One_CurrPtr) == 0)
-                            {
-                                Log.HexInfo(_One_CurrPtr, "区域设置结束符");
-                                break;
-                            }
-
-                            if (srcData2Dos.targetDatas[i].targetData.Count <= Set_TargetIndex)
-                            {
-                                Log.HexWar(_One_CurrPtr, "第" + i + "区,第" + Set_TargetIndex + "个目标,比2Dos目标数超限。");
-                                break;
-                            }
-
-                            byte[] srcOneData = srcData2Dos.targetDatas[i].targetData[Set_TargetIndex];
-
-                            HexHelper.ModifyDataToBytes(target, srcOneData, _One_CurrPtr);
-                            Log.HexTips(_One_CurrPtr, "第" + i + "区，第" + Set_TargetIndex + "个目标，更换为2Dos数据，长度{0}", srcOneData.Length);
-
-                            Set_TargetIndex++;
-                            _One_CurrPtr += 0x34;
-                        }
-
-                        _CAreaSetTop_CurrPtr += 0x4;
-                    }
-                    #endregion
-
-                    #region 区域映射
-                    //区域映射指针
-                    int _CAreaPosTopPtr = HexHelper.bytesToInt(target, 4, 0x20);
-                    Log.HexInfo(0x20, "换区映射指针->{0}", _CAreaPosTopPtr);
-                    //读取单个区域映射游标
-                    int _CAreaPosTop_CurrPtr = _CAreaPosTopPtr;
-                    for (int i = 0; i < _AreaCount; i++)
-                    {
-                        if (srcData2Dos.targetDatas.Length <= i)
-                        {
-                            Log.HexWar(_CAreaPosTop_CurrPtr, "第" + i + "区 换区映射,比2Dos区数超限。");
-                            break;
-                        }
-                        byte[] srcOneData = srcData2Dos.areaPosDatas[i];
-
-                        HexHelper.ModifyDataToBytes(target, srcOneData, _CAreaPosTop_CurrPtr);
-                        Log.HexTips(_CAreaPosTop_CurrPtr, "第" + i + "区的区域映射，更换为2Dos数据，读取数据,长度{0}", srcOneData.Length);
-                        _CAreaPosTop_CurrPtr += 0x20;
-                    }
-                    #endregion
-
-                }
-                else
-                {
-                    Log.HexColor(ConsoleColor.Green, _QuestInfoPtr + ModifyQuest.cQuestInfo_TargetMap_Offset, "目的地地图,在源数据之外");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-                target = null;
-                return false;
-            }
-
-            return true;
         }
 
         /// <summary>
@@ -590,6 +472,7 @@ namespace MHFQuestReader
                         {
                             resultStr.AddRange(Single_resultStr);
                         }
+
                         CurrPtr += 0x08;//前推游标 读取下一个报酬道具组
                     }
                 }
@@ -636,18 +519,8 @@ namespace MHFQuestReader
                     int ItemID = HexHelper.bytesToInt(target, 2, _SuppliesItem_CurrPtr);//道具ID
                     int Count = HexHelper.bytesToInt(target, 2, _SuppliesItem_CurrPtr + 0x02);//数量
 
-                    resultStr.Add($"{MHHelper.Get2DosItemName(ItemID)}  |   数量{Count}");
+                    resultStr.Add($"{MHHelper.Get2MHFItemName(ItemID)}  |   数量{Count}");
 
-                    ////判断道具ID是否超限
-                    //if (ItemID > cMax_ItemID)
-                    //{
-                    //    Log.HexWar(_SuppliesItem_CurrPtr, "主线支援道具,第" + i + "个ID->{0}道具ID超出最大可能{1}，属于MHF道具【" + MHHelper.Get2MHFItemName(ItemID) + "】,将其修正为【不可燃烧的废物】ID->{2}", ItemID, cMax_ItemID, cModify_OutOfItemID);
-                    //    HexHelper.ModifyIntHexToBytes(target, cModify_OutOfItemID, _SuppliesItem_CurrPtr, 2);
-                    //}
-                    //else
-                    //{
-                    //    Log.HexColor(ConsoleColor.Green, _SuppliesItem_CurrPtr, "主线支援道具第" + i + "个，道具ID->{0} 【" + MHHelper.Get2DosItemName(ItemID) + "】 数量->{1}", ItemID, Count);
-                    //}
 
                     _SuppliesItem_CurrPtr += 0x04;
                 }
@@ -671,18 +544,7 @@ namespace MHFQuestReader
                     int ItemID = HexHelper.bytesToInt(target, 2, _SuppliesItem_Zhi_1_CurrPtr);//道具ID
                     int Count = HexHelper.bytesToInt(target, 2, _SuppliesItem_Zhi_1_CurrPtr + 0x02);//数量
 
-                    resultStr.Add($"{MHHelper.Get2DosItemName(ItemID)}  |   数量{Count}");
-                    ////判断道具ID是否超限
-                    //if (ItemID > cMax_ItemID)
-                    //{
-                    //    Log.HexWar(_SuppliesItem_Zhi_1_CurrPtr, "支线1支援道具第" + i + "个,ID->{0}道具ID超出最大可能{1}，属于MHF道具【" + MHHelper.Get2MHFItemName(ItemID) + "】,将其修正为【不可燃烧的废物】ID->{2}", ItemID, cMax_ItemID, cModify_OutOfItemID);
-                    //    HexHelper.ModifyIntHexToBytes(target, cModify_OutOfItemID, _SuppliesItem_Zhi_1_CurrPtr, 2);
-                    //}
-                    //else
-                    //{
-                    //    Log.HexColor(ConsoleColor.Green, _SuppliesItem_Zhi_1_CurrPtr, "支线1支援道具第" + i + "个主线，道具ID->{0} 【" + MHHelper.Get2DosItemName(ItemID) + "】 数量->{1}", ItemID, Count);
-                    //}
-
+                    resultStr.Add($"{MHHelper.Get2MHFItemName(ItemID)}  |   数量{Count}");
                     _SuppliesItem_Zhi_1_CurrPtr += 0x04;
                 }
 
@@ -705,17 +567,8 @@ namespace MHFQuestReader
                     int ItemID = HexHelper.bytesToInt(target, 2, _SuppliesItem_Zhi_2_CurrPtr);//道具ID
                     int Count = HexHelper.bytesToInt(target, 2, _SuppliesItem_Zhi_2_CurrPtr + 0x02);//数量
 
-                    resultStr.Add($"{MHHelper.Get2DosItemName(ItemID)}  |   数量{Count}");
-                    ////判断道具ID是否超限
-                    //if (ItemID > cMax_ItemID)
-                    //{
-                    //    Log.HexWar(_SuppliesItem_Zhi_2_CurrPtr, "支线2支援道具第" + i + "个,ID->{0}道具ID超出最大可能{1}，属于MHF道具【" + MHHelper.Get2MHFItemName(ItemID) + "】,将其修正为【不可燃烧的废物】ID->{2}", ItemID, cMax_ItemID, cModify_OutOfItemID);
-                    //    HexHelper.ModifyIntHexToBytes(target, cModify_OutOfItemID, _SuppliesItem_Zhi_2_CurrPtr, 2);
-                    //}
-                    //else
-                    //{
-                    //    Log.HexColor(ConsoleColor.Green, _SuppliesItem_Zhi_2_CurrPtr, "支线2支援道具第" + i + "个主线，道具ID->{0} 【" + MHHelper.Get2DosItemName(ItemID) + "】 数量->{1}", ItemID, Count);
-                    //}
+                    resultStr.Add($"{MHHelper.Get2MHFItemName(ItemID)}  |   数量{Count}");
+                    
 
                     _SuppliesItem_Zhi_2_CurrPtr += 0x04;
                 }
@@ -785,21 +638,9 @@ namespace MHFQuestReader
 
                         if (Pr > 0 && ItemID > 0 && ItemID <= 0x031D)
                         {
-                            resultStr.Add($"道具：{MHHelper.Get2DosItemName(ItemID)}，概率：{Pr}");
+                            resultStr.Add($"道具：{MHHelper.Get2MHFItemName(ItemID)}，概率：{Pr}");
                         }
 
-                        ////判断道具ID是否超限
-                        //if (ItemID > cMax_ItemID)
-                        //{
-                        //    Log.HexWar(ItemCurrPtr, "第{0}个采集代号，第" + setCount + "个素材，ID->{1}道具ID超出最大可能{2}，属于MHF道具【" + MHHelper.Get2MHFItemName(ItemID) + "】,将其修正为【不可燃烧的废物】ID->{3}", i,ItemID, cMax_ItemID, cModify_OutOfItemID);
-                        //    HexHelper.ModifyIntHexToBytes(target, cModify_OutOfItemID, ItemCurrPtr + 0x02, 2);
-                        //    ItemID = HexHelper.bytesToInt(target, 2, ItemCurrPtr + 0x02);//道具ID
-                        //    Log.HexTips(ItemCurrPtr, "重新读取 第{0}个采集代号，第" + setCount + "个素材，道具ID->{1} 【" + MHHelper.Get2DosItemName(ItemID) + "】 概率->{2}", i,ItemID, Pr);
-                        //}
-                        //else
-                        //{
-                        //    Log.HexColor(ConsoleColor.Green, ItemCurrPtr, "第{0}个采集代号，第" + setCount + "个素材，道具ID->{1} 【" + MHHelper.Get2DosItemName(ItemID) + "】 概率->{2}", i,ItemID, Pr);
-                        //}
                         setCount++;
                         ItemCurrPtr += 0x04;
                     }
@@ -910,7 +751,7 @@ namespace MHFQuestReader
 
                             if (Pr > 0 && FishID > 0)
                             {
-                                resultStr.Add($"{MHHelper.Get2DosFishName(FishID)} |   概率：{Pr}");
+                                resultStr.Add($"{MHHelper.Get2MHFFishName(FishID)} |   概率：{Pr}");
                             }
 
                             ////判断道具ID是否超限

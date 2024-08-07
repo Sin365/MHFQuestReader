@@ -118,7 +118,8 @@
             }
 
             DictMapAreaData[_QuestTargetMapID] = mapAreaData;
-            DictMapIDFileName[_QuestTargetMapID] = MHHelper.Get2MapName(_QuestTargetMapID) + FileName;
+            MHHelper.Get2MHFMapName(_QuestTargetMapID, out string MapName);
+            DictMapIDFileName[_QuestTargetMapID] = MapName + FileName;
             if (DictMapIDFullFileName.ContainsKey(_QuestTargetMapID))
             {
                 File.Delete(DictMapIDFullFileName[_QuestTargetMapID]);
